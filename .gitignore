@@ -1,0 +1,26 @@
+# Local environment values
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and package-manager caches
+node_modules/
+**/node_modules/
+.npm-cache/
+**/.npm-cache/
+.pnpm-store/
+**/.pnpm-store/
+
+# Generated build and Supabase state
+dist/
+**/dist/
+.supabase/
+**/.supabase/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db
