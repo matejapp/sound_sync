@@ -19,6 +19,7 @@ dist/
 **/dist/
 .supabase/
 **/.supabase/
+**/supabase/.temp/
 
 # Logs and operating-system files
 *.log
