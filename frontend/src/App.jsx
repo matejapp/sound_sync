@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowRight, ArrowUp, CaretRight, ChatCircle, Check, Compass, DotsThree,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CaretRight, ChatCircle, Check, Compass, DotsThree,
   Globe, Heart, House, LinkSimple, Lock, MagnifyingGlass, MusicNotes, Pause, PencilSimple,
   Play, Plus, Queue, Repeat, ShareNetwork, Shuffle, SignOut, SkipBack, SkipForward,
   SpeakerHigh, Trash, UploadSimple, User, Waveform, X,
@@ -48,6 +48,46 @@ function readAudioDuration(file) {
   });
 }
 
+function PlaylistView({
+  playlist, tracks, comments, currentTrack, isPlaying, liked, isOwner, detailLoading,
+  commentDraft, userId, onBack, onStartTrack, onTogglePlayback, onLike, onShare, onEdit,
+  onAddFromLibrary, onUpload, onReorder, onRemove, onComment, onDeleteComment, setCommentDraft,
+}) {
+  return <>
+    <header className="topbar playlist-view-topbar">
+      <button className="back-button" type="button" onClick={onBack}><ArrowLeft weight="bold" /> Back to playlists</button>
+      <div className="topbar-actions">
+        {isOwner && <button className="playlist-text-action" type="button" onClick={onEdit}><PencilSimple /> Edit</button>}
+        <button className="upload-button" type="button" onClick={onUpload}><UploadSimple weight="bold" /> Upload track</button>
+      </div>
+    </header>
+    <div className="content-scroll playlist-view-scroll">
+      <section className="playlist-view-hero">
+        <Artwork src={playlist.image} alt={`${playlist.title} artwork`} className="playlist-view-art" />
+        <div className="playlist-view-copy">
+          <span className="eyebrow">{playlist.visibility} playlist</span>
+          <h1>{playlist.title}</h1>
+          <p>{playlist.description || "A SoundSync playlist."}</p>
+          <div className="playlist-view-meta">Curated by <strong>{playlist.curator}</strong><span>•</span>{tracks.length} tracks<span>•</span>{playlist.likesCount || 0} likes</div>
+          <div className="playlist-view-actions">
+            <button className="playlist-main-play" type="button" onClick={onTogglePlayback}>{isPlaying && tracks.some((track) => track.id === currentTrack?.id) ? <Pause weight="fill" /> : <Play weight="fill" />} Play</button>
+            <IconButton label={liked ? "Unlike" : "Like"} active={liked} onClick={onLike}><Heart weight={liked ? "fill" : "regular"} /></IconButton>
+            <IconButton label="Share" onClick={onShare}><ShareNetwork /></IconButton>
+            {isOwner && <button className="playlist-text-action" type="button" onClick={onAddFromLibrary}><Plus /> Add songs</button>}
+          </div>
+        </div>
+      </section>
+
+      <section className="playlist-song-section">
+        <div className="section-title-row"><div><span className="eyebrow">Playlist songs</span><h2>{tracks.length ? `${tracks.length} track${tracks.length === 1 ? "" : "s"}` : "No songs yet"}</h2></div>{isOwner && <button type="button" onClick={onAddFromLibrary}><Plus /> Add from library</button>}</div>
+        <div className="track-table" role="table">{detailLoading ? <div className="inline-loader">Loading tracks…</div> : tracks.length ? tracks.map((track, index) => <div className={`track-row ${currentTrack?.id === track.id ? "playing" : ""}`} role="row" key={track.id}><button className="track-main" type="button" onClick={() => onStartTrack(track)}><span className="track-index">{currentTrack?.id === track.id && isPlaying ? <Waveform weight="fill" /> : String(index + 1).padStart(2, "0")}</span><Artwork src={track.image} alt="" /><span className="track-name"><strong>{track.title}</strong><small>{track.artist}</small></span><span className="track-album">{track.album || track.genre || "SoundSync upload"}</span><span className="track-duration">{track.duration}</span></button>{isOwner && <div className="track-admin"><IconButton label="Move up" disabled={index === 0} onClick={() => onReorder(track.id, -1)}><ArrowUp /></IconButton><IconButton label="Move down" disabled={index === tracks.length - 1} onClick={() => onReorder(track.id, 1)}><ArrowDown /></IconButton><IconButton label="Remove" onClick={() => onRemove(track.id)}><X /></IconButton></div>}</div>) : <div className="empty-state compact"><Queue /><h3>This playlist is empty</h3><p>{isOwner ? "Upload a track or add one from your library." : "The owner has not added tracks yet."}</p>{isOwner && <button type="button" onClick={onUpload}><UploadSimple /> Upload track</button>}</div>}</div>
+      </section>
+
+      <section className="playlist-comments comments-panel"><div className="comments-title"><span><ChatCircle /> Comments</span><small>{comments.length}</small></div>{comments.map((comment) => <div className="comment" key={comment.id}><span className="comment-avatar">{comment.authorName?.slice(0, 1) || "L"}</span><p><strong>{comment.authorName}</strong>{comment.body}</p>{(comment.author_id === userId || isOwner) && <IconButton label="Delete comment" onClick={() => onDeleteComment(comment.id)}><Trash /></IconButton>}</div>)}<form onSubmit={onComment}><input value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Add a comment" /><button type="submit" disabled={!commentDraft.trim()}><ArrowRight weight="bold" /></button></form></section>
+    </div>
+  </>;
+}
+
 function Dashboard({ session }) {
   const [activeNav, setActiveNav] = useState("Discover");
   const [profile, setProfile] = useState(null);
@@ -55,6 +95,7 @@ function Dashboard({ session }) {
   const [likedPlaylists, setLikedPlaylists] = useState([]);
   const [myTracks, setMyTracks] = useState([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
+  const [playlistViewOpen, setPlaylistViewOpen] = useState(false);
   const [tracks, setTracks] = useState(fallbackTracks);
   const [comments, setComments] = useState([]);
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -85,6 +126,18 @@ function Dashboard({ session }) {
   function flash(message) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
+  }
+
+  function openPlaylist(playlist) {
+    setSelectedPlaylist(playlist);
+    setPlaylistViewOpen(true);
+  }
+
+  function playSelectedPlaylist() {
+    if (!tracks.length) { flash("This playlist has no uploaded tracks yet."); return; }
+    const selectedTrack = tracks.find((track) => track.id === currentTrack?.id);
+    if (!selectedTrack) startTrack(tracks[0]);
+    else togglePlayback();
   }
 
   async function refreshLibrary(preferredPlaylistId) {
@@ -153,7 +206,7 @@ function Dashboard({ session }) {
       const created = await createPlaylist({ title: String(values.get("title")), description: String(values.get("description")), visibility: String(values.get("visibility")) });
       const cover = values.get("cover");
       if (cover instanceof File && cover.size) await uploadPlaylistCover(created.id, cover);
-      await refreshLibrary(created.id); setModal(null); flash("Playlist created");
+      await refreshLibrary(created.id); setPlaylistViewOpen(true); setModal(null); flash("Playlist created");
     } catch (cause) { flash(cause.message); } finally { setBusy(false); }
   }
 
@@ -171,7 +224,7 @@ function Dashboard({ session }) {
   async function handleDeletePlaylist() {
     if (!selectedPlaylist || !window.confirm(`Delete “${selectedPlaylist.title}”? This cannot be undone.`)) return;
     setBusy(true);
-    try { await deletePlaylist(selectedPlaylist.id); await refreshLibrary(); setModal(null); flash("Playlist deleted"); }
+    try { await deletePlaylist(selectedPlaylist.id); await refreshLibrary(); setPlaylistViewOpen(false); setModal(null); flash("Playlist deleted"); }
     catch (cause) { flash(cause.message); } finally { setBusy(false); }
   }
 
@@ -259,27 +312,36 @@ function Dashboard({ session }) {
   const secondFeature = playlists[1];
   if (loading) return <LoadingScreen label="Loading your library…" />;
 
-  return <div className="site-stage"><main className="app-shell">
+  return <div className="site-stage"><main className={`app-shell ${playlistViewOpen ? "playlist-mode" : ""}`}>
     <aside className="sidebar">
-      <button className="brand" type="button" onClick={() => setActiveNav("Discover")}><span className="brand-mark"><Waveform weight="fill" /></span><span>SoundSync</span></button>
-      <nav className="primary-nav" aria-label="Primary navigation">{[["Home", House], ["Discover", Compass], ["My music", MusicNotes], ["Liked", Heart]].map(([label, Icon]) => <button key={label} className={activeNav === label ? "active" : ""} type="button" onClick={() => setActiveNav(label)}><Icon weight={activeNav === label ? "fill" : "regular"} /><span>{label}</span></button>)}</nav>
-      <div className="sidebar-section"><div className="sidebar-heading"><span>Your playlists</span><button type="button" aria-label="Create playlist" onClick={() => setModal("createPlaylist")}><Plus /></button></div><div className="mini-playlists">{ownedPlaylists.slice(0, 5).map((item) => <button key={item.id} type="button" onClick={() => setSelectedPlaylist(item)} className={selectedPlaylist?.id === item.id ? "selected" : ""}><Artwork src={item.image} alt="" /><span><strong>{item.title}</strong><small>{item.count} tracks</small></span></button>)}{!ownedPlaylists.length && <button type="button" className="empty-mini" onClick={() => setModal("createPlaylist")}><Plus /><span><strong>Create your first playlist</strong><small>Private by default</small></span></button>}</div></div>
+      <button className="brand" type="button" onClick={() => { setActiveNav("Discover"); setPlaylistViewOpen(false); }}><span className="brand-mark"><Waveform weight="fill" /></span><span>SoundSync</span></button>
+      <nav className="primary-nav" aria-label="Primary navigation">{[["Home", House], ["Discover", Compass], ["My music", MusicNotes], ["Liked", Heart]].map(([label, Icon]) => <button key={label} className={!playlistViewOpen && activeNav === label ? "active" : ""} type="button" onClick={() => { setActiveNav(label); setPlaylistViewOpen(false); }}><Icon weight={!playlistViewOpen && activeNav === label ? "fill" : "regular"} /><span>{label}</span></button>)}</nav>
+      <div className="sidebar-section"><div className="sidebar-heading"><span>Your playlists</span><button type="button" aria-label="Create playlist" onClick={() => setModal("createPlaylist")}><Plus /></button></div><div className="mini-playlists">{ownedPlaylists.slice(0, 5).map((item) => <button key={item.id} type="button" onClick={() => openPlaylist(item)} className={playlistViewOpen && selectedPlaylist?.id === item.id ? "selected" : ""}><Artwork src={item.image} alt="" /><span><strong>{item.title}</strong><small>{item.count} tracks</small></span></button>)}{!ownedPlaylists.length && <button type="button" className="empty-mini" onClick={() => setModal("createPlaylist")}><Plus /><span><strong>Create your first playlist</strong><small>Private by default</small></span></button>}</div></div>
       <button className="profile-chip" type="button" onClick={() => setModal("profile")}><span className="profile-avatar">{profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : (profile?.display_name || profile?.username || "U").slice(0, 2).toUpperCase()}</span><span><strong>{profile?.display_name || profile?.username}</strong><small>View profile</small></span><CaretRight /></button>
     </aside>
 
-    <section className="content-panel"><header className="topbar"><div><span className="eyebrow">{activeNav}</span><h1>{activeNav === "My music" ? "Your music, organized." : activeNav === "Liked" ? "Saved for another listen." : "Find your next sound."}</h1></div><div className="topbar-actions"><label className="search-box"><MagnifyingGlass /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search playlists" aria-label="Search playlists" /><kbd>⌘ K</kbd></label><button className="upload-button" type="button" onClick={() => setModal("upload")}><UploadSimple weight="bold" /> Upload track</button></div></header>
+    <section className="content-panel">{playlistViewOpen && selectedPlaylist ? <PlaylistView
+      playlist={selectedPlaylist} tracks={tracks} comments={comments} currentTrack={currentTrack}
+      isPlaying={isPlaying} liked={liked} isOwner={isOwner} detailLoading={detailLoading}
+      commentDraft={commentDraft} userId={session.user.id} setCommentDraft={setCommentDraft}
+      onBack={() => setPlaylistViewOpen(false)} onStartTrack={startTrack} onTogglePlayback={playSelectedPlaylist}
+      onLike={handleLike} onShare={handleShare} onEdit={() => setModal("editPlaylist")}
+      onAddFromLibrary={() => setModal("library")} onUpload={() => setModal("upload")}
+      onReorder={handleReorder} onRemove={handleRemoveTrack} onComment={handleComment}
+      onDeleteComment={handleDeleteComment}
+    /> : <><header className="topbar"><div><span className="eyebrow">{activeNav}</span><h1>{activeNav === "My music" ? "Your music, organized." : activeNav === "Liked" ? "Saved for another listen." : "Find your next sound."}</h1></div><div className="topbar-actions"><label className="search-box"><MagnifyingGlass /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search playlists" aria-label="Search playlists" /><kbd>⌘ K</kbd></label><button className="upload-button" type="button" onClick={() => setModal("upload")}><UploadSimple weight="bold" /> Upload track</button></div></header>
       <div className="content-scroll">
         {activeNav === "Discover" && <section className="feature-grid" aria-label="Featured playlists">
-          <button className="hero-card orange-card" type="button" onClick={() => featured && setSelectedPlaylist(featured)}><div className="hero-copy"><span className="eyebrow dark">Featured mix</span><h2>{featured?.title || "Your first great mix"}</h2><p>{featured?.description || "Upload music, build a playlist, and share it with your listeners."}</p><span className="text-link">Open the mix <ArrowRight /></span></div><Artwork src={featured?.image || artwork.warm} alt="Featured playlist artwork" className="hero-art" /></button>
-          <button className="hero-card teal-card" type="button" onClick={() => secondFeature && setSelectedPlaylist(secondFeature)}><Artwork src={secondFeature?.image || artwork.reggae} alt="Playlist artwork" className="hero-art wide" /><div className="hero-copy compact"><span className="eyebrow dark">Editor’s cut</span><h2>{secondFeature?.title || "Make it yours"}</h2><span className="text-link">{secondFeature?.count || 0} tracks <CaretRight /></span></div></button>
+          <button className="hero-card orange-card" type="button" onClick={() => featured && openPlaylist(featured)}><div className="hero-copy"><span className="eyebrow dark">Featured mix</span><h2>{featured?.title || "Your first great mix"}</h2><p>{featured?.description || "Upload music, build a playlist, and share it with your listeners."}</p><span className="text-link">Open the mix <ArrowRight /></span></div><Artwork src={featured?.image || artwork.warm} alt="Featured playlist artwork" className="hero-art" /></button>
+          <button className="hero-card teal-card" type="button" onClick={() => secondFeature && openPlaylist(secondFeature)}><Artwork src={secondFeature?.image || artwork.reggae} alt="Playlist artwork" className="hero-art wide" /><div className="hero-copy compact"><span className="eyebrow dark">Editor’s cut</span><h2>{secondFeature?.title || "Make it yours"}</h2><span className="text-link">{secondFeature?.count || 0} tracks <CaretRight /></span></div></button>
         </section>}
         <section className="section-block"><div className="section-title-row"><div><span className="eyebrow">{activeNav === "My music" ? "Your library" : activeNav === "Liked" ? "Your likes" : "Community playlists"}</span><h2>{activeNav === "My music" ? "Created by you" : activeNav === "Liked" ? "Playlists you saved" : "Playlists for right now"}</h2></div><button type="button" onClick={() => setModal("createPlaylist")}><Plus /> New playlist</button></div>
-          {!visiblePlaylists.length ? <div className="empty-state"><MusicNotes /><h3>No playlists here yet</h3><p>Create one or discover a public playlist to get started.</p><button type="button" onClick={() => setModal("createPlaylist")}><Plus /> Create playlist</button></div> : <div className="playlist-grid">{visiblePlaylists.map((item) => <article className={`playlist-card ${selectedPlaylist?.id === item.id ? "selected" : ""}`} key={item.id}><button type="button" className="cover-button" onClick={() => setSelectedPlaylist(item)}><Artwork src={item.image} alt={`${item.title} cover`} /><span className="card-play"><Play weight="fill" /></span></button><div className="card-meta"><button type="button" onClick={() => setSelectedPlaylist(item)}><strong>{item.title}</strong><span>{item.curator} · {item.count} tracks</span></button><IconButton label="More options" onClick={() => { setSelectedPlaylist(item); if (item.owner_id === session.user.id) setModal("editPlaylist"); }}><DotsThree weight="bold" /></IconButton></div></article>)}</div>}
+          {!visiblePlaylists.length ? <div className="empty-state"><MusicNotes /><h3>No playlists here yet</h3><p>Create one or discover a public playlist to get started.</p><button type="button" onClick={() => setModal("createPlaylist")}><Plus /> Create playlist</button></div> : <div className="playlist-grid">{visiblePlaylists.map((item) => <article className={`playlist-card ${playlistViewOpen && selectedPlaylist?.id === item.id ? "selected" : ""}`} key={item.id}><button type="button" className="cover-button" onClick={() => openPlaylist(item)}><Artwork src={item.image} alt={`${item.title} cover`} /><span className="card-play"><ArrowRight weight="bold" /></span></button><div className="card-meta"><button type="button" onClick={() => openPlaylist(item)}><strong>{item.title}</strong><span>{item.curator} · {item.count} tracks</span></button><IconButton label="More options" onClick={() => { setSelectedPlaylist(item); if (item.owner_id === session.user.id) setModal("editPlaylist"); }}><DotsThree weight="bold" /></IconButton></div></article>)}</div>}
         </section>
         <section className="section-block mix-section"><div className="section-title-row"><div><span className="eyebrow">Selected playlist</span><h2>{selectedPlaylist?.title || "Choose a playlist"}</h2></div>{isOwner && <button type="button" onClick={() => setModal("library")}><Plus /> Add from library</button>}</div>
           <div className="track-table" role="table">{detailLoading ? <div className="inline-loader">Loading tracks…</div> : tracks.length ? tracks.map((track, index) => <div className={`track-row ${currentTrack?.id === track.id ? "playing" : ""}`} role="row" key={track.id}><button className="track-main" type="button" onClick={() => startTrack(track)}><span className="track-index">{currentTrack?.id === track.id && isPlaying ? <Waveform weight="fill" /> : String(index + 1).padStart(2, "0")}</span><Artwork src={track.image} alt="" /><span className="track-name"><strong>{track.title}</strong><small>{track.artist}</small></span><span className="track-album">{track.album || track.genre || "SoundSync upload"}</span><span className="track-duration">{track.duration}</span></button>{isOwner && <div className="track-admin"><IconButton label="Move up" disabled={index === 0} onClick={() => handleReorder(track.id, -1)}><ArrowUp /></IconButton><IconButton label="Move down" disabled={index === tracks.length - 1} onClick={() => handleReorder(track.id, 1)}><ArrowDown /></IconButton><IconButton label="Remove" onClick={() => handleRemoveTrack(track.id)}><X /></IconButton></div>}</div>) : <div className="empty-state compact"><Queue /><h3>This playlist is empty</h3><p>{isOwner ? "Upload a track or add one from your library." : "The owner has not added tracks yet."}</p></div>}</div>
         </section>
-      </div>
+      </div></>}
     </section>
 
     <aside className="detail-panel"><div className="detail-scroll">{selectedPlaylist ? <><div className="detail-head"><span className="eyebrow">{selectedPlaylist.visibility} playlist</span>{isOwner && <IconButton label="Edit playlist" onClick={() => setModal("editPlaylist")}><PencilSimple /></IconButton>}</div><Artwork src={selectedPlaylist.image} alt={`${selectedPlaylist.title} artwork`} className="detail-art" /><div className="detail-title"><h2>{selectedPlaylist.title}</h2><p>Curated by {selectedPlaylist.curator} · {tracks.length} tracks · {selectedPlaylist.likesCount || 0} likes</p></div><div className="playlist-actions"><IconButton label="Shuffle"><Shuffle /></IconButton><IconButton label={liked ? "Unlike" : "Like"} active={liked} onClick={handleLike}><Heart weight={liked ? "fill" : "regular"} /></IconButton><IconButton label="Share" onClick={handleShare}><ShareNetwork /></IconButton><button className="primary-play" type="button" onClick={togglePlayback}>{isPlaying ? <Pause weight="fill" /> : <Play weight="fill" />}</button></div>
